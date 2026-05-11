@@ -1,0 +1,30 @@
+name: Daily Naukri Update
+
+on:
+  schedule:
+    # 04:00 UTC is 09:30 AM IST
+    - cron: "0 4 * * *"
+  workflow_dispatch: # Allows you to run it manually for testing
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install playwright playwright-stealth
+          playwright install chromium
+
+      - name: Run Upload Script
+        env:
+          NAUKRI_EMAIL: ${{ secrets.NAUKRI_EMAIL }}
+          NAUKRI_PASSWORD: ${{ secrets.NAUKRI_PASSWORD }}
+        run: python upload_cv.py
