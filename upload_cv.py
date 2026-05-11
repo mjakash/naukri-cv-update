@@ -1,23 +1,3 @@
-import shutil
-import os
-import time
-from datetime import datetime
-from playwright.sync_api import sync_playwright
-from playwright_stealth import stealth_sync
-
-def prepare_cv():
-    base_cv_path = "./base_cv.pdf"
-    if not os.path.exists(base_cv_path):
-        raise FileNotFoundError("Base CV not found in root.")
-
-    now = datetime.now()
-    todays_date_str = f"{now.day}{now.strftime('%b').upper()}"
-    new_cv_path = f"./manirujjamanAkashCV_SDET_{todays_date_str}.pdf"
-    
-    shutil.copy(base_cv_path, new_cv_path)
-    print(f"✅ Generated: {new_cv_path}")
-    return new_cv_path
-
 def upload_to_naukri(cv_filename):
     # Fetch credentials from GitHub Secrets
     email = os.environ.get("NAUKRI_EMAIL")
@@ -32,39 +12,55 @@ def upload_to_naukri(cv_filename):
             user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
         )
         page = context.new_page()
+        
+        # We pin stealth_sync to V1 in requirements, so this works perfectly now
         stealth_sync(page)
 
         try:
-            print("🚀 Navigating to Login...")
-            page.goto("https://www.naukri.com/nlogin/login", wait_until="networkidle")
+            # 1. Go to the main homepage
+            print("🚀 Navigating to Naukri Homepage...")
+            page.goto("https://www.naukri.com/", wait_until="networkidle")
 
-            # Human-like typing: types with random delays between 50ms and 150ms
-            page.type("#usernameField", email, delay=100)
-            page.type("#passwordField", password, delay=120)
+            # 2. Click the Login button on the top nav to open the side drawer
+            print("🖱️ Opening login drawer...")
+            page.click('#login_Layer')
+
+            # 3. Define the selectors based on the actual HTML
+            email_selector = 'input[placeholder="Enter your active Email ID / Username"]'
+            password_selector = 'input[placeholder="Enter your password"]'
             
-            # Click Login
-            page.click('button[type="submit"]')
+            # Wait for the drawer to slide out and the input to become visible
+            page.wait_for_selector(email_selector, state="visible", timeout=10000)
+
+            # 4. Human-like typing into the drawer inputs
+            print("⌨️ Entering credentials...")
+            page.type(email_selector, email, delay=100)
+            page.type(password_selector, password, delay=120)
             
-            # Wait for profile page to load
+            # 5. Click Login inside the drawer
+            page.click('button.loginButton[type="submit"]')
+            
+            # 6. Wait for Naukri to authenticate and route us to the profile dashboard
+            print("⏳ Waiting for authentication...")
             page.wait_for_url("**/mnj/profile**", timeout=30000)
             print("🔓 Login Successful!")
 
-            # Direct file upload to the hidden input
+            # 7. Direct file upload to the hidden input on the profile page
             print(f"📤 Uploading: {cv_filename}")
             page.set_input_files('input[type="file"]', cv_filename)
             
-            # Allow time for upload to complete
+            # Allow time for Naukri's backend to process the file
             page.wait_for_timeout(7000)
             print("✅ Daily CV Update Complete!")
 
         except Exception as e:
             print(f"❌ Error: {e}")
-            page.screenshot(path="debug_error.png")
+            page.screenshot(path="debug_error.png", full_page=True)
+            print("📸 Saved error screenshot to debug_error.png")
+            import sys
+            sys.exit(1)
+            
         finally:
             browser.close()
             if os.path.exists(cv_filename):
                 os.remove(cv_filename)
-
-if __name__ == "__main__":
-    path = prepare_cv()
-    upload_to_naukri(path)
